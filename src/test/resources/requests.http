@@ -16,7 +16,14 @@ v=16
 
 ###
 
-POST http://localhost:9999/coursar/search?q=Java PRO
+POST http://localhost:9998/coursar/search?q=Java PRO&b=123&c=456
+Content-Type: application/x-www-form-urlencoded
+
+q=Java Advanced&v=16
+
+###
+
+POST http://localhost:9998/courses?q=Java PRO&b=123&c=456
 Content-Type: application/x-www-form-urlencoded
 
 q=Java Advanced&v=16
@@ -104,9 +111,12 @@ Content-Type: image/png
 
 ###
 
-GET http://localhost:9999/courses
+GET http://localhost:9999/courses/search?q=Java PRO
+
 Username: admin
 
 ###
 
-POST http://localhost:9999/courses
+POST http://localhost:9998/courses/search?q=Java PRO&b=123&c=456
+
+dataset

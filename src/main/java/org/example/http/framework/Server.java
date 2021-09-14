@@ -12,15 +12,13 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Parameter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 
@@ -44,15 +42,15 @@ public class Server {
     final var body = "{\"status\": \"error\"}";
     try {
       response.write(
-          (
-              // language=HTTP
-              "HTTP/1.1 404 Not Found\r\n" +
-                  "Content-Length: " + body.length() + "\r\n" +
-                  "Content-Type: application/json\r\n" +
-                  "Connection: close\r\n" +
-                  "\r\n" +
-                  body
-          ).getBytes(StandardCharsets.UTF_8)
+              (
+                      // language=HTTP
+                      "HTTP/1.1 404 Not Found\r\n" +
+                              "Content-Length: " + body.length() + "\r\n" +
+                              "Content-Type: application/json\r\n" +
+                              "Connection: close\r\n" +
+                              "\r\n" +
+                              body
+              ).getBytes(StandardCharsets.UTF_8)
       );
     } catch (IOException e) {
       throw new RequestHandleException(e);
@@ -63,15 +61,15 @@ public class Server {
     final var body = "{\"status\": \"error\"}";
     try {
       response.write(
-          (
-              // language=HTTP
-              "HTTP/1.1 500 Internal Server Error\r\n" +
-                  "Content-Length: " + body.length() + "\r\n" +
-                  "Content-Type: application/json\r\n" +
-                  "Connection: close\r\n" +
-                  "\r\n" +
-                  body
-          ).getBytes(StandardCharsets.UTF_8)
+              (
+                      // language=HTTP
+                      "HTTP/1.1 500 Internal Server Error\r\n" +
+                              "Content-Length: " + body.length() + "\r\n" +
+                              "Content-Type: application/json\r\n" +
+                              "Connection: close\r\n" +
+                              "\r\n" +
+                              body
+              ).getBytes(StandardCharsets.UTF_8)
       );
     } catch (IOException e) {
       throw new RequestHandleException(e);
@@ -81,6 +79,7 @@ public class Server {
 
   // state -> NOT_STARTED, STARTED, STOP, STOPPED
   private volatile boolean stop = false;
+  private ServerSocket serverSocket;
 
   public void get(String path, Handler handler) {
     registerHandler(HttpMethods.GET, path, handler);
@@ -100,10 +99,10 @@ public class Server {
 
             final var handlerMethod = new HandlerMethod(handler, method);
             Optional.ofNullable(routes.get(mapping.method()))
-                .ifPresentOrElse(
-                    map -> map.put(mapping.path(), handlerMethod),
-                    () -> routes.put(mapping.method(), new HashMap<>(Map.of(mapping.path(), handlerMethod)))
-                );
+                    .ifPresentOrElse(
+                            map -> map.put(mapping.path(), handlerMethod),
+                            () -> routes.put(mapping.method(), new HashMap<>(Map.of(mapping.path(), handlerMethod)))
+                    );
           }
         }
       }
@@ -117,10 +116,10 @@ public class Server {
       final var handle = handler.getClass().getMethod("handle", Request.class, OutputStream.class);
       final var handlerMethod = new HandlerMethod(handler, handle);
       Optional.ofNullable(routes.get(method))
-          .ifPresentOrElse(
-              map -> map.put(path, handlerMethod),
-              () -> routes.put(method, new HashMap<>(Map.of(path, handlerMethod)))
-          );
+              .ifPresentOrElse(
+                      map -> map.put(path, handlerMethod),
+                      () -> routes.put(method, new HashMap<>(Map.of(path, handlerMethod)))
+              );
     } catch (NoSuchMethodException e) {
       throw new HandlerRegistrationException(e);
     }
@@ -132,19 +131,45 @@ public class Server {
 //    routes.put(method, new HashMap<>(Map.of(path, handler)));
   }
 
+  //public void registerHandler(String method, String path, String contentType, Handler handler) {
+  //  try {
+  //    final var handle = handler.getClass().getMethod("handle", Request.class, OutputStream.class);
+  //    final var handlerMethod = new HandlerMethod(handler, handle);
+  //    Optional.ofNullable(routes.get(method))
+  //            .ifPresentOrElse(
+  //                    mapPath ->Optional.ofNullable(mapPath.get(path))  //map.put(path, handlerMethod)
+  //                            .ifPresentOrElse(
+  //                                    mapContentType -> mapContentType.put(contentType, handlerMethod),
+  //                                    () -> mapPath.put(path, new HashMap<>(Map.of(path, handlerMethod)))
+  //                            ) ,
+  //                    () -> routes.put(method, new HashMap<>(Map.of(path, Map.of(contentType, handlerMethod))))
+//
+  //            );
+  //  } catch (NoSuchMethodException e) {
+  //    throw new HandlerRegistrationException(e);
+  //  }
+////    final var map = routes.get(method);
+////    if (map != null) {
+////      map.put(path, handler);
+////      return;
+////    }
+////    routes.put(method, new HashMap<>(Map.of(path, handler)));
+  //}
+
   public void addArgumentResolver(HandlerMethodArgumentResolver... resolvers) {
     argumentResolvers.addAll(List.of(resolvers));
   }
 
   public void listen(int port) {
-    try (
-        final var serverSocket = new ServerSocket(port)
-    ) {
+    try {
+      this.serverSocket = new ServerSocket(port);
       log.log(Level.INFO, "server started at port: " + serverSocket.getLocalPort());
       while (!stop) {
         final var socket = serverSocket.accept();
         service.submit(() -> handle(socket));
       }
+    } catch (SocketException se) {
+      log.log(Level.INFO, se.toString());
     } catch (IOException e) {
       throw new ServerException(e);
     }
@@ -152,14 +177,19 @@ public class Server {
 
   public void stop() {
     this.stop = true;
+    try {
+      this.serverSocket.close();
+    } catch (IOException e) {
+      throw new ServerException(e);
+    }
     service.shutdownNow();
   }
 
   public void handle(final Socket socket) {
     try (
-        socket;
-        final var in = new BufferedInputStream(socket.getInputStream());
-        final var out = new BufferedOutputStream(socket.getOutputStream());
+            socket;
+            final var in = new BufferedInputStream(socket.getInputStream());
+            final var out = new BufferedOutputStream(socket.getOutputStream());
     ) {
       log.log(Level.INFO, "connected: " + socket.getPort());
       final var buffer = new byte[headersLimit];
@@ -182,6 +212,7 @@ public class Server {
         // TODO: uri split ? -> URLDecoder
         final var uri = requestLineParts[1];
 
+
         final var headersEndIndex = Bytes.indexOf(buffer, CRLFCRLF, requestLineEndIndex, read) + CRLFCRLF.length;
         if (headersEndIndex == 3) {
           throw new MalformedRequestException("headers too big");
@@ -196,8 +227,8 @@ public class Server {
           }
           final var header = new String(buffer, lastIndex, headerEndIndex - lastIndex);
           final var headerParts = Arrays.stream(header.split(":", 2))
-              .map(String::trim)
-              .collect(Collectors.toList());
+                  .map(String::trim)
+                  .collect(Collectors.toList());
 
           if (headerParts.size() != 2) {
             throw new MalformedRequestException("Invalid header: " + header);
@@ -218,18 +249,21 @@ public class Server {
         final var body = in.readNBytes(contentLength);
 
         // TODO: annotation monkey
+
         final var request = Request.builder()
-            .method(method)
-            .path(uri)
-            .headers(headers)
-            .body(body)
-            .build();
+                .method(method)
+                .path(uri)
+                .headers(headers)
+                .body(body)
+                .build();
+
+
 
         final var response = out;
 
         final var handlerMethod = Optional.ofNullable(routes.get(request.getMethod()))
-            .map(o -> o.get(request.getPath()))
-            .orElse(new HandlerMethod(notFoundHandler, notFoundHandler.getClass().getMethod("handle", Request.class, OutputStream.class)));
+                .map(o -> o.get(request.getPath().split("\\?")[0]))
+                .orElse(new HandlerMethod(notFoundHandler, notFoundHandler.getClass().getMethod("handle", Request.class, OutputStream.class)));
 
         try {
           final var invokableMethod = handlerMethod.getMethod();
@@ -261,16 +295,16 @@ public class Server {
         // language=HTML
         final var html = "<h1>Mailformed request</h1>";
         out.write(
-            (
-                // language=HTTP
-                "HTTP/1.1 400 Bad Request\r\n" +
-                    "Server: nginx\r\n" +
-                    "Content-Length: " + html.length() + "\r\n" +
-                    "Content-Type: text/html; charset=UTF-8\r\n" +
-                    "Connection: close\r\n" +
-                    "\r\n" +
-                    html
-            ).getBytes(StandardCharsets.UTF_8)
+                (
+                        // language=HTTP
+                        "HTTP/1.1 400 Bad Request\r\n" +
+                                "Server: nginx\r\n" +
+                                "Content-Length: " + html.length() + "\r\n" +
+                                "Content-Type: text/html; charset=UTF-8\r\n" +
+                                "Connection: close\r\n" +
+                                "\r\n" +
+                                html
+                ).getBytes(StandardCharsets.UTF_8)
         );
       } catch (NoSuchMethodException e) {
         e.printStackTrace();
@@ -282,3 +316,4 @@ public class Server {
     }
   }
 }
+
