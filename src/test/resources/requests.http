@@ -100,7 +100,7 @@ Content-Type: application/json
   "tags": [
     "java",
     "programming"
-  ],
+  ]
 }
 --WebAppBoundary
 Content-Disposition: form-data; name="avatar"; filename="logo.png"
