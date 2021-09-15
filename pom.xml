@@ -53,6 +53,7 @@
             <version>${junit-jupiter.version}</version>
             <scope>test</scope>
         </dependency>
+
     </dependencies>
 
     <build>
@@ -92,5 +93,12 @@
             <url>https://maven.pkg.github.com/Chapchelitsa/practice-java</url>
         </repository>
     </distributionManagement>
-</project>
 
+    <repositories>
+        <repository>
+            <id>github</id>
+            <url>https://maven.pkg.github.com/Chapchelitsa/practice-java</url>
+        </repository>
+    </repositories>
+
+</project>
